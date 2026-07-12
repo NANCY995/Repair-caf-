@@ -2,7 +2,7 @@ services:
   - type: web
     name: butus-whatsapp-bot
     runtime: python
-    repo: https://github.com/votre-org/butus-whatsapp-bot
+    repo: https://github.com/NANCY995/Repair-caf-
     plan: free
     region: frankfurt
     buildCommand: pip install -r requirements.txt
@@ -19,6 +19,8 @@ services:
       - key: WHATSAPP_APP_SECRET
         sync: false
       - key: ADMIN_API_TOKEN
+        sync: false
+      - key: APP_SECRET_KEY
         sync: false
       - key: BUTUS_NOTIFICATION_PHONE
         sync: false

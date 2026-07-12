@@ -14,6 +14,7 @@ from sheets import add_ticket, add_contact_request, add_repair_session, add_part
 from impact_calculator import calculate_impact, format_impact_text, calculate_impact_batch
 from parts_catalog import get_parts_by_device, get_all_parts, search_parts, get_part_by_id, format_part_detail, get_device_categories
 from reconditioned_catalog import get_all_reconditioned, get_by_category, search_reconditioned, get_by_id, format_detail, format_category_list, get_categories
+from veille import do_veille, build_veille_menu, build_perso_instruction, VEILLE_TOPICS
 
 
 conversations: dict[str, ConversationData] = {}
@@ -85,6 +86,10 @@ async def handle_message(phone: str, text: str) -> list[str]:
         ConversationState.RECONDITIONED_DETAIL: _handle_reconditioned_detail,
         ConversationState.RECONDITIONED_CONTACT: _handle_reconditioned_contact,
         ConversationState.CONSENT_PENDING: _handle_consent,
+        ConversationState.VEILLE_MENU: _handle_veille_menu,
+        ConversationState.VEILLE_TOPIC: _handle_veille_topic,
+        ConversationState.VEILLE_RESULTS: _handle_veille_results,
+        ConversationState.VEILLE_PERSO: _handle_veille_perso,
     }
 
     handler = handlers.get(state, _handle_home)
@@ -119,8 +124,9 @@ def build_home_menu() -> str:
         "7️⃣ *Astuces & infos* — prévention, contacts\n"
         "8️⃣ *Impact* — CO₂ évité, stats\n"
         "9️⃣ *Enregistrer* une réparation (technicien)\n"
-        "🔟 *À propos* de BUTUS\n\n"
-        "👉 Répondez avec le numéro de votre choix."
+        "🔟 *Veille stratégique* — marché, concurrents 📡\n\n"
+        "👉 Répondez avec le numéro de votre choix.\n"
+        "💡 *À propos* de BUTUS → tapez \"butus\""
     )
 
 
@@ -138,12 +144,12 @@ def _set_home_interactive(phone: str):
         {"id": "7", "title": "Astuces & infos", "description": "prévention, contacts"},
         {"id": "8", "title": "Impact CO₂", "description": "stats environnement"},
         {"id": "9", "title": "Enregistrer", "description": "une réparation (technicien)"},
-        {"id": "10", "title": "À propos", "description": "BUTUS Repair"},
+        {"id": "10", "title": "Veille stratégique", "description": "marché, concurrents"},
     ]
     register_interactive(phone, {
         "type": "list",
         "header": "🌀 BUTUS Repair",
-        "body": "Je suis votre copilote réparation. Besoin d'aide ?",
+        "body": "Je suis votre copilote réparation. Besoin d'aide ?\n\n💡 \"butus\" = À propos",
         "footer": "BUTUS Repair — Lomé 🇹🇬",
         "button": "Menu principal",
         "sections": [{"title": "Options", "rows": rows}],
@@ -264,7 +270,13 @@ async def _handle_home(phone: str, text: str, conv: ConversationData) -> list[st
         "réparation": "log", "reparation": "log",
         "technicien": "log", "réparateur": "log",
 
-        "10": "about", "butus": "about", "info": "about",
+        "10": "veille", "veille": "veille",
+        "veille stratégique": "veille", "stratégique": "veille",
+        "strategique": "veille", "marché": "veille",
+        "concurrents": "veille", "concurrence": "veille",
+        "tendance": "veille", "tendances": "veille",
+
+        "butus": "about", "info": "about",
         "présentation": "about", "à propos": "about",
     }
 
@@ -297,6 +309,9 @@ async def _handle_home(phone: str, text: str, conv: ConversationData) -> list[st
     elif intent == "log":
         _update_state(phone, ConversationState.LOG_REPAIR)
         return ["🔧 *Enregistrer une réparation*\n\nRéservé aux techniciens BUTUS.\n\n📝 *Numéro du ticket ?* (ex: BUTUS-20260710123456)\n\n💡 Vous le trouvez dans le message de confirmation reçu par le client."]
+    elif intent == "veille":
+        _update_state(phone, ConversationState.VEILLE_MENU)
+        return [build_veille_menu()]
     elif intent == "about":
         _update_state(phone, ConversationState.ABOUT_BUTUS)
         return await _handle_about(phone, text, conv)
@@ -317,7 +332,7 @@ async def _handle_home(phone: str, text: str, conv: ConversationData) -> list[st
             "7️⃣ Astuces & infos\n"
             "8️⃣ Impact\n"
             "9️⃣ Enregistrer une réparation\n"
-            "🔟 À propos"
+            "🔟 Veille stratégique"
         ]
 
 
@@ -1272,6 +1287,7 @@ async def _handle_reconditioned_contact(phone: str, text: str, conv: Conversatio
     if text in ["retour", "menu", "annuler", "0"]:
         _update_state(phone, ConversationState.BROWSE_RECONDITIONED)
         return [build_reconditioned_menu()]
+
     if text in ["contacter", "acheter", "reserver", "réserver", "oui"]:
         return [
             "📝 *Intéressé par cet appareil ?*\n\n"
@@ -1303,3 +1319,83 @@ async def _handle_reconditioned_contact(phone: str, text: str, conv: Conversatio
             + "\n\n" + build_home_menu()
         ]
     return ["👉 Tapez *contacter* pour qu'on vous rappelle, ou donnez vos coordonnées."]
+
+
+# =================== VEILLE STRATÉGIQUE ===================
+
+async def _handle_veille_menu(phone: str, text: str, conv: ConversationData) -> list[str]:
+    if text == "0":
+        _update_state(phone, ConversationState.HOME)
+        return [build_home_menu()]
+
+    topic_info = VEILLE_TOPICS.get(text)
+    if topic_info:
+        topic_key, topic_label = topic_info
+        if topic_key == "personnalisé":
+            _update_state(phone, ConversationState.VEILLE_PERSO)
+            return [build_perso_instruction()]
+        _update_state(phone, ConversationState.VEILLE_TOPIC)
+        conv.veille_topic = topic_key
+        return ["⏳ *Recherche en cours...* Génération de la synthèse.\n"]
+    return [build_veille_menu()]
+
+
+async def _handle_veille_topic(phone: str, text: str, conv: ConversationData) -> list[str]:
+    result = do_veille(conv.veille_topic or "marche")
+    if not result:
+        _update_state(phone, ConversationState.HOME)
+        return [
+            "❌ Impossible de générer la veille pour le moment. Réessayez plus tard.\n\n"
+            + build_home_menu()
+        ]
+
+    parts = _split_long_message(result)
+    _update_state(phone, ConversationState.VEILLE_RESULTS)
+    parts.append(
+        "📡 *Que faire ensuite ?*\n"
+        "1️⃣ Nouvelle recherche sur ce sujet\n"
+        "2️⃣ Autre sujet de veille\n"
+        "0️⃣ Menu principal"
+    )
+    return parts
+
+
+async def _handle_veille_results(phone: str, text: str, conv: ConversationData) -> list[str]:
+    if text in ["1", "recommencer", "nouveau", "encore"]:
+        _update_state(phone, ConversationState.VEILLE_TOPIC)
+        return ["⏳ *Génération d'une nouvelle synthèse...*\n"]
+    if text in ["2", "autre", "menu veille"]:
+        _update_state(phone, ConversationState.VEILLE_MENU)
+        return [build_veille_menu()]
+    _update_state(phone, ConversationState.HOME)
+    return [build_home_menu()]
+
+
+async def _handle_veille_perso(phone: str, text: str, conv: ConversationData) -> list[str]:
+    if text == "0":
+        _update_state(phone, ConversationState.HOME)
+        return [build_home_menu()]
+    if len(text.strip()) < 5:
+        return ["Votre question est trop courte. Donnez plus de détails (min 5 caractères).\n\n0️⃣ Menu principal"]
+
+    _update_state(phone, ConversationState.VEILLE_TOPIC)
+    conv.veille_topic = "personnalisé"
+    conv.veille_custom_question = text.strip()
+    return ["⏳ *Analyse de votre question en cours...* Génération de la réponse.\n"]
+
+
+def _split_long_message(text: str, max_len: int = 1500) -> list[str]:
+    if len(text) <= max_len:
+        return [text]
+
+    parts = []
+    current = ""
+    for line in text.split("\n"):
+        if len(current) + len(line) + 1 > max_len and current:
+            parts.append(current.strip())
+            current = line + "\n"
+        else:
+            current += line + "\n"
+    if current.strip():
+        parts.append(current.strip())
+    return parts

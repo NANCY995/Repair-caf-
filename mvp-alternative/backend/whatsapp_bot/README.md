@@ -1,8 +1,8 @@
 # 🤖 BUTUS Repair — WhatsApp Bot MVP
 
-Assistant diagnostic WhatsApp + catalogue pièces + reconditionnés pour le Repair Café BUTUS (Lomé, Togo).
+Assistant diagnostic WhatsApp + catalogue pièces + reconditionnés + veille stratégique pour le Repair Café BUTUS (Lomé, Togo).
 
-**3 piliers :** Diagnostic IA (P1) · Pièces détachées (P2) · Appareils reconditionnés (P3)
+**4 piliers :** Diagnostic IA (P1) · Pièces détachées (P2) · Appareils reconditionnés (P3) · Veille Stratégique & Recherche Web (P4)
 
 ---
 
@@ -171,6 +171,15 @@ backend/whatsapp_bot/
 | Google Sheets API | Gratuit |
 | Hébergement (Railway Free / Render Free) | Gratuit |
 | **Total** | **~1-5 $/mois** |
+
+---
+
+## Veille Stratégique & Recherche Web (Pilier 4)
+
+Le bot intègre désormais un module de veille stratégique automatisé et en temps réel :
+1. **Recherche Web Temps Réel** : L'IA utilise `duckduckgo-search` pour chercher des informations actualisées du web (actualités, prix locaux, lois) sur Lomé/Togo avant de formuler ses rapports.
+2. **Planification Hebdomadaire** : Un planificateur interne (`APScheduler`) génère automatiquement une veille complète chaque lundi matin à 08:00 et la sauvegarde en local dans `latest_veille.json`.
+3. **Dashboard Intégré** : La dernière veille générée s'affiche directement sur le tableau de bord d'impact (`/dashboard`).
 
 ---
 

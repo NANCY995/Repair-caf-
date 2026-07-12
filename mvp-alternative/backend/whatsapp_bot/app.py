@@ -17,13 +17,72 @@ from parts_catalog import get_all_parts, get_parts_by_device, search_parts, get_
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("butus-whatsapp")
+from datetime import datetime
+import asyncio
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
+VEILLE_FILE = "latest_veille.json"
+
+def get_latest_veille() -> dict:
+    if os.path.exists(VEILLE_FILE):
+        try:
+            with open(VEILLE_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {"date": None, "content": "Aucune veille hebdomadaire disponible pour le moment."}
+
+def save_latest_veille(content: str):
+    data = {
+        "date": datetime.now().strftime("%d/%m/%Y à %H:%M"),
+        "content": content
+    }
+    try:
+        with open(VEILLE_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.error(f"Erreur lors de la sauvegarde de la veille: {e}")
+
+async def run_weekly_veille():
+    logger.info("📡 Lancement de la veille hebdomadaire automatique...")
+    try:
+        from veille import do_veille
+        prompt_custom = (
+            "Réalise une veille complète et hebdomadaire de la réparation en Afrique de l'Ouest (Lomé, Togo).\n"
+            "Aborde en 3 sections :\n"
+            "1. Prix et disponibilité des pièces (écrans, batteries, ventilateurs)\n"
+            "2. Actualités des concurrents et réparateurs à Lomé\n"
+            "3. Nouvelles réglementations ou initiatives écologiques locales au Togo."
+        )
+        # do_veille uses search_web internally so it will be up to date
+        result = do_veille("personnalisé", prompt_custom)
+        if result:
+            save_latest_veille(result)
+            logger.info("✅ Veille hebdomadaire sauvegardée avec succès.")
+        else:
+            logger.error("❌ Échec de la génération de la veille hebdomadaire (résultat vide).")
+    except Exception as e:
+        logger.error(f"❌ Erreur lors de la génération de la veille hebdomadaire: {e}", exc_info=True)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("🚀 BUTUS WhatsApp Bot démarré")
     logger.info(f"📚 {len(get_all_device_names())} fiches techniques chargées")
+    
+    # Démarrage du planificateur de tâches
+    scheduler = AsyncIOScheduler()
+    # Planification hebdomadaire (chaque lundi à 08:00)
+    scheduler.add_job(run_weekly_veille, "cron", day_of_week="mon", hour=8, minute=0)
+    scheduler.start()
+    logger.info("⏰ Planificateur APScheduler démarré (veille programmée le lundi à 08h00)")
+    
+    # Lancement d'une veille initiale asynchrone si aucune n'a encore été générée
+    if not os.path.exists(VEILLE_FILE):
+        logger.info("📡 Première veille manquante, génération en arrière-plan...")
+        asyncio.create_task(run_weekly_veille())
+        
     yield
+    scheduler.shutdown()
     logger.info("🛑 BUTUS WhatsApp Bot arrêté")
 
 
@@ -398,6 +457,42 @@ async def get_stats(request: Request):
         ),
     }
 
+# ==================== VEILLE STRATÉGIQUE API ====================
+
+class VeilleRequest(BaseModel):
+    topic: str = "marche"
+    custom_text: str = ""
+
+class VeilleResponse(BaseModel):
+    topic: str
+    result: str
+
+
+@app.post("/api/veille", response_model=VeilleResponse)
+async def api_veille(request: Request, payload: VeilleRequest):
+    """Génère une synthèse de veille stratégique via Gemini."""
+    from security import verify_admin_token
+    verify_admin_token(request)
+
+    from veille import do_veille
+    result = do_veille(payload.topic, payload.custom_text)
+    if not result:
+        raise HTTPException(status_code=500, detail="Erreur génération veille")
+
+    return VeilleResponse(topic=payload.topic, result=result)
+
+
+@app.get("/api/veille/topics")
+async def api_veille_topics():
+    """Liste les sujets de veille disponibles."""
+    from veille import VEILLE_TOPICS
+    return {
+        "topics": [
+            {"id": k, "key": v[0], "label": v[1]}
+            for k, v in VEILLE_TOPICS.items()
+        ]
+    }
+
 # ==================== SESSIONS DE RÉPARATION API ====================
 
 SESSION_STORE: dict[str, dict] = {}  # stockage mémoire fallback
@@ -490,6 +585,7 @@ async def get_dashboard(request: Request):
         sessions.append(s)
 
     stats = get_dashboard_stats(sessions, tickets)
+    stats["latest_veille"] = get_latest_veille()
     return stats
 
 
@@ -534,6 +630,7 @@ async def dashboard_page(request: Request):
     @media (max-width: 700px) { .chart-row { grid-template-columns: 1fr; } }
     .loading { text-align: center; padding: 60px; color: #999; }
     .footer { text-align: center; color: #aaa; font-size: 12px; margin-top: 40px; }
+    .veille-text { font-family: inherit; font-size: 14px; line-height: 1.6; background: #fafafa; border: 1px solid #eee; border-radius: 8px; padding: 15px; max-height: 350px; overflow-y: auto; white-space: pre-wrap; margin-top: 10px; }
   </style>
 </head>
 <body>
@@ -549,6 +646,7 @@ async def dashboard_page(request: Request):
         <div class="card"><h3>Répartition des réparations</h3><canvas id="repairChart"></canvas></div>
       </div>
       <div class="card"><h3>Top pannes les plus fréquentes</h3><div id="topIssues"></div></div>
+      <div class="card" style="margin-top:16px;"><h3>📡 Dernière Veille Hebdomadaire <span id="veilleDate" style="font-size:12px;color:#888;text-transform:none;"></span></h3><div id="veilleContent" class="veille-text"></div></div>
       <div class="card" style="margin-top:16px;"><h3>Sessions de réparation récentes</h3><table id="sessionsTable"><thead><tr><th>Session</th><th>Appareil</th><th>Pièces</th><th>Coût</th><th>Statut</th><th>CO₂ évité</th></tr></thead><tbody id="sessionsBody"></tbody></table></div>
     </div>
     <p class="footer">BUTUS Repair 🇹🇬 — Lomé, Togo — Données mises à jour en temps réel</p>
@@ -597,6 +695,11 @@ async def dashboard_page(request: Request):
           <table><thead><tr><th>Symptôme</th><th>Occurrences</th></tr></thead><tbody>
           ${issues.map(i => `<tr><td>${i.symptom}</td><td><strong>${i.count}</strong></td></tr>`).join('')}
           </tbody></table>` : '<p style="color:#999;padding:12px;">Aucune donnée suffisante</p>';
+
+        // Veille
+        const veille = data.latest_veille || {};
+        document.getElementById('veilleDate').textContent = veille.date ? `(Générée le ${veille.date})` : "(Génération en cours...)";
+        document.getElementById('veilleContent').textContent = veille.content || "Aucune veille disponible.";
       } catch(e) {
         document.getElementById('loading').innerHTML = '❌ Erreur chargement: ' + e.message;
       }

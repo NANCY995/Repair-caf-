@@ -44,6 +44,11 @@ class ConversationState(str, Enum):
     RECONDITIONED_CONTACT = "RECONDITIONED_CONTACT"
     CONSENT_PENDING = "CONSENT_PENDING"
 
+    VEILLE_MENU = "VEILLE_MENU"
+    VEILLE_TOPIC = "VEILLE_TOPIC"
+    VEILLE_RESULTS = "VEILLE_RESULTS"
+    VEILLE_PERSO = "VEILLE_PERSO"
+
 
 class DeviceCategory(BaseModel):
     id: str
@@ -79,6 +84,8 @@ class ConversationData(BaseModel):
     created_at: datetime = datetime.now()
     updated_at: datetime = datetime.now()
     language: str = "fr"
+    veille_topic: Optional[str] = None
+    veille_custom_question: Optional[str] = None
 
 
 class DiagnosisRequest(BaseModel):

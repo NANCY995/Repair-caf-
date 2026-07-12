@@ -54,6 +54,19 @@ def _call_gemini(messages: list[dict], temperature: float, max_tokens: int) -> O
     return response.text
 
 
+def get_text_completion(messages: list[dict], temperature: float = 0.3, max_tokens: int = 1000) -> Optional[str]:
+    """Appelle le LLM configuré (OpenAI ou Gemini) et retourne du texte brut."""
+    settings = get_settings()
+    provider = settings.ai_provider
+
+    if provider == "gemini":
+        content = _call_gemini(messages, temperature, max_tokens)
+    else:
+        content = _call_openai(messages, temperature, max_tokens)
+
+    return content.strip() if content else None
+
+
 def get_completion(messages: list[dict], temperature: float = 0.3, max_tokens: int = 1000) -> Optional[dict]:
     """Appelle le LLM configuré (OpenAI ou Gemini) et retourne un dict JSON."""
     settings = get_settings()
