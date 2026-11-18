@@ -8,7 +8,7 @@ from typing import Optional
 
 from fastapi import FastAPI, Request, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, HTMLResponse
 from pydantic import BaseModel
 
 from config import get_settings
@@ -594,7 +594,7 @@ async def get_dashboard(request: Request):
     return stats
 
 
-@app.get("/dashboard")
+@app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard_page(request: Request):
     """Page HTML du tableau de bord d'impact."""
     from security import verify_admin_token
@@ -718,7 +718,7 @@ async def dashboard_page(request: Request):
 
 # ==================== FICHIER STATIQUE (PAGE DE TEST) ====================
 
-@app.get("/test")
+@app.get("/test", response_class=HTMLResponse)
 async def test_page(request: Request):
     """Page HTML simple pour tester le bot."""
     from security import verify_admin_token
@@ -774,9 +774,14 @@ async def test_page(request: Request):
       document.getElementById('msgInput').value = '';
       addMsg('user', text);
       try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const token = urlParams.get('token') || 'butus_admin_token_2026';
         const res = await fetch('/api/test/send', {
           method: 'POST',
-          headers: {'Content-Type': 'application/json'},
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Admin-Token': token
+          },
           body: JSON.stringify({ from: 'test-user', text })
         });
         const data = await res.json();
