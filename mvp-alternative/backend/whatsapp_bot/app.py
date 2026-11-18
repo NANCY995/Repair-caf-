@@ -45,7 +45,7 @@ def save_latest_veille(content: str):
     except Exception as e:
         logger.error(f"Erreur lors de la sauvegarde de la veille: {e}")
 
-async def run_weekly_veille():
+def _sync_run_weekly_veille():
     logger.info("📡 Lancement de la veille hebdomadaire automatique...")
     try:
         from veille import do_veille
@@ -65,6 +65,9 @@ async def run_weekly_veille():
             logger.error("❌ Échec de la génération de la veille hebdomadaire (résultat vide).")
     except Exception as e:
         logger.error(f"❌ Erreur lors de la génération de la veille hebdomadaire: {e}", exc_info=True)
+
+async def run_weekly_veille():
+    await asyncio.to_thread(_sync_run_weekly_veille)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
